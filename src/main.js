@@ -1,3 +1,5 @@
+console.clear();
+
 const convertInputData = require("./input-data/convert-input-data");
 
 const hrstart = process.hrtime();

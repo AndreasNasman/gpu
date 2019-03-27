@@ -1,5 +1,5 @@
 exports.execute = () => {
-  console.log("\nArcminutes to radians conversion started.");
+  console.log("Arcminutes to radians conversion started.");
 
   const fs = require("fs");
 
