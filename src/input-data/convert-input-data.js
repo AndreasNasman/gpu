@@ -33,7 +33,7 @@ exports.execute = () => {
   };
 
   convertToRadiansJSON("data_100k_arcmin", "real-galaxies");
-  convertToRadiansJSON("flat_100k_arcmin", "synthetic-random-galaxies");
+  convertToRadiansJSON("flat_100k_arcmin", "random-galaxies");
 
   console.log("Conversion finished.");
 };
