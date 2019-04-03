@@ -50,9 +50,9 @@ exports.execute = () => {
     console.log(`Histogram '${outputName}' built!`);
   };
 
-  buildHistogram(realGalaxies, null, "histogram-DD");
-  buildHistogram(realGalaxies, randomGalaxies, "histogram-DR");
-  buildHistogram(randomGalaxies, null, "histogram-RR");
+  buildHistogram(realGalaxies, null, "DD");
+  buildHistogram(realGalaxies, randomGalaxies, "DR");
+  buildHistogram(randomGalaxies, null, "RR");
 
   console.log("\x1b[33m%s\x1b[0m", "Building of histograms started.\n");
 };
