@@ -1,5 +1,5 @@
 exports.execute = () => {
-  console.log("Arcminutes to radians conversion started.");
+  console.log("\x1b[33m%s\x1b[0m", "Conversion started.");
 
   const fs = require("fs");
 
@@ -33,5 +33,5 @@ exports.execute = () => {
   convertToRadiansJSON("data_100k_arcmin", "real-galaxies");
   convertToRadiansJSON("flat_100k_arcmin", "random-galaxies");
 
-  console.log("Conversion finished.");
+  console.log("\x1b[33m%s\x1b[0m", "Conversion finished.\n");
 };
