@@ -7,25 +7,23 @@ exports.execute = () => {
     (Number(arcminutes) * Math.PI) / (60 * 180);
 
   const convertToRadiansJSON = (inputFile, outputName) => {
-    const result = [];
-
     const data = fs.readFileSync(
       `${__dirname}/original/${inputFile}.txt`,
       "utf-8"
     );
 
-    data
+    const result = data
       .split("\r\n")
       .splice(1)
-      .forEach(row => {
-        let [rightAcsension, declination] = row.split(/\s+/);
+      .map(row => {
+        let [rightAscension, declination] = row.split(/\s+/);
         declination = arcminutesToRadians(declination);
-        rightAcsension = arcminutesToRadians(rightAcsension);
+        rightAscension = arcminutesToRadians(rightAscension);
 
-        result.push({
-          declination: declination,
-          rightAcsension: rightAcsension
-        });
+        return {
+          declination,
+          rightAscension
+        };
       });
 
     fs.writeFileSync(`${__dirname}/${outputName}.json`, JSON.stringify(result));
