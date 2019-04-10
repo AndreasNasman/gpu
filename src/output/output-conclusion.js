@@ -15,6 +15,7 @@ exports.execute = () => {
   }
 
   fs.writeFileSync(`${__dirname}/result.json`, JSON.stringify(result));
+  console.log("Result generated.");
 
   console.log("\x1b[33m%s\x1b[0m", "Conlusion finished.");
 };
