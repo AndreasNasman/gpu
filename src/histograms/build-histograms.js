@@ -29,17 +29,16 @@ exports.execute = () => {
       bins[index] += 1;
     };
 
-    const SIZE = 10000;
     if (!secondGalaxySet) {
-      firstGalaxySet.slice(0, SIZE).forEach((firstGalaxy, index) => {
-        firstGalaxySet.slice(index, SIZE).forEach(secondGalaxy => {
+      firstGalaxySet.forEach((firstGalaxy, index) => {
+        firstGalaxySet.slice(index).forEach(secondGalaxy => {
           const angle = angleBetweenTwoGalaxies(firstGalaxy, secondGalaxy);
           updateBins(angle);
         });
       });
     } else {
-      firstGalaxySet.slice(0, SIZE).forEach(firstGalaxy => {
-        secondGalaxySet.slice(0, SIZE).forEach(secondGalaxy => {
+      firstGalaxySet.forEach(firstGalaxy => {
+        secondGalaxySet.forEach(secondGalaxy => {
           const angle = angleBetweenTwoGalaxies(firstGalaxy, secondGalaxy);
           updateBins(angle);
         });
