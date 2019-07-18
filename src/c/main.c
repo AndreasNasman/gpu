@@ -18,8 +18,8 @@ typedef struct GalaxySet
     Galaxy *galaxies;
 } GalaxySet;
 
-void read_file(FILE *fpointer, const char *DELIMITER, int n, Galaxy *galaxy_set);
 __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
+void read_file(FILE *fpointer, const char *DELIMITER, int n, Galaxy *galaxy_set);
 
 int main()
 {
@@ -101,43 +101,6 @@ int main()
     return 0;
 }
 
-double arcminutes_to_radians(double arcminute_value)
-{
-    return (M_PI * arcminute_value) / (60 * 180);
-}
-
-void read_file(FILE *fpointer, const char *DELIMITER, int n, Galaxy *galaxies)
-{
-    char line[LINE_LENGTH];
-    const int DECLINATION_INDEX = 0;
-    const int RIGHT_ASCENSION_INDEX = 1;
-
-    for (int i = 0; i < n; i += 1)
-    {
-        fgets(line, LINE_LENGTH, fpointer);
-
-        char *token = strtok(line, DELIMITER);
-
-        int index = 0;
-        while (token != NULL)
-        {
-            double arcminuteValue = atof(token);
-
-            if (index == DECLINATION_INDEX)
-            {
-                galaxies[i].declination = arcminutes_to_radians(arcminuteValue);
-            }
-            else if (index == RIGHT_ASCENSION_INDEX)
-            {
-                galaxies[i].right_ascension = arcminutes_to_radians(arcminuteValue);
-            }
-
-            index += 1;
-            token = strtok(NULL, DELIMITER);
-        }
-    }
-}
-
 __device__ double angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
 {
     return acos(
@@ -178,4 +141,41 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
                 update_bin(RR_histogram, angle);
             }
         }
+}
+
+double arcminutes_to_radians(double arcminute_value)
+{
+    return (M_PI * arcminute_value) / (60 * 180);
+}
+
+void read_file(FILE *fpointer, const char *DELIMITER, int n, Galaxy *galaxies)
+{
+    char line[LINE_LENGTH];
+    const int DECLINATION_INDEX = 0;
+    const int RIGHT_ASCENSION_INDEX = 1;
+
+    for (int i = 0; i < n; i += 1)
+    {
+        fgets(line, LINE_LENGTH, fpointer);
+
+        char *token = strtok(line, DELIMITER);
+
+        int index = 0;
+        while (token != NULL)
+        {
+            double arcminuteValue = atof(token);
+
+            if (index == DECLINATION_INDEX)
+            {
+                galaxies[i].declination = arcminutes_to_radians(arcminuteValue);
+            }
+            else if (index == RIGHT_ASCENSION_INDEX)
+            {
+                galaxies[i].right_ascension = arcminutes_to_radians(arcminuteValue);
+            }
+
+            index += 1;
+            token = strtok(NULL, DELIMITER);
+        }
+    }
 }
