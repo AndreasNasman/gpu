@@ -19,58 +19,7 @@ typedef struct GalaxySet
 } GalaxySet;
 
 void read_file(FILE *fpointer, const char *DELIMITER, int n, Galaxy *galaxy_set);
-
-__device__ double angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
-{
-    return acos(
-        sin(first_galaxy.declination) * sin(second_galaxy.declination) +
-        cos(first_galaxy.declination) * cos(second_galaxy.declination) *
-            cos(first_galaxy.right_ascension - second_galaxy.right_ascension));
-}
-
-__device__ double radians_to_degrees(double radian_value)
-{
-    return radian_value * (180 / M_PI);
-}
-
-__device__ void update_bin(int *bin, double angle)
-{
-    int index = floor(radians_to_degrees(angle) / BIN_WIDTH);
-    atomicAdd(&bin[index], 1);
-}
-
-__global__ void build_histogram_single(GalaxySet galaxy_set, int *bin, int n)
-{
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = blockDim.x * gridDim.x;
-
-    for (int i = 0; i < n; i += 1)
-    {
-        for (int j = index; j < n; j += stride)
-        {
-            if (j <= i)
-                continue;
-
-            double angle = angle_between_two_galaxies(galaxy_set.galaxies[i], galaxy_set.galaxies[j]);
-            update_bin(bin, angle);
-        }
-    }
-}
-
-__global__ void build_histogram(GalaxySet first_galaxy_set, GalaxySet second_galaxy_set, int *bin, int n)
-{
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = blockDim.x * gridDim.x;
-
-    for (int i = 0; i < n; i += 1)
-    {
-        for (int j = index; j < n; j += stride)
-        {
-            double angle = angle_between_two_galaxies(first_galaxy_set.galaxies[i], second_galaxy_set.galaxies[j]);
-            update_bin(bin, angle);
-        }
-    }
-}
+__global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
 
 int main()
 {
@@ -78,11 +27,10 @@ int main()
     FILE *fpointer = fopen("./input-data/real-galaxies.txt", "r");
     const char *DELIMITER = "\t";
 
-    // Reads number of lines to process (defined on the first line of the file) and defines number of blocks for CUDA.
+    // Reads number of lines to process (defined on the first line of the file).
     char line[LINE_LENGTH];
     fgets(line, LINE_LENGTH, fpointer);
     const int NUMBER_OF_LINES = atoi(line);
-    const int NUMBER_OF_BLOCKS = (NUMBER_OF_LINES + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     GalaxySet real;
     cudaMallocManaged(&real.galaxies, NUMBER_OF_LINES * sizeof(Galaxy));
@@ -112,18 +60,20 @@ int main()
     const int COVERAGE = 180; // degrees
     const int NUMBER_OF_BINS = COVERAGE * (1 / BIN_WIDTH);
 
+    // Defines number of blocks to use.
+    const int NUMBER_OF_BLOCKS = (NUMBER_OF_LINES + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
     int *DD_histogram, *DR_histogram, *RR_histogram;
     cudaMallocManaged(&DD_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&DR_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&RR_histogram, NUMBER_OF_BINS * sizeof(int));
 
-    build_histogram_single<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(real, DD_histogram, NUMBER_OF_LINES);
-    build_histogram<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(real, random, DR_histogram, NUMBER_OF_LINES);
-    build_histogram_single<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(random, RR_histogram, NUMBER_OF_LINES);
+    build_histograms<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(real, random, DD_histogram, DR_histogram, RR_histogram, NUMBER_OF_LINES);
 
     cudaDeviceSynchronize();
 
     /* DEBUG */
+
     long int totalSizeDD = 0;
     long int totalSizeDR = 0;
     long int totalSizeRR = 0;
@@ -133,11 +83,13 @@ int main()
         totalSizeDR += DR_histogram[i];
         totalSizeRR += RR_histogram[i];
     }
-    printf("Total size DD: %li\n", totalSizeDD);
+    printf("\nTotal size DD: %li\n", totalSizeDD);
     printf("Total size DR: %li\n", totalSizeDR);
     printf("Total size RR: %li\n", totalSizeRR);
+
     /* DEBUG */
 
+    // CLEAN UP
     cudaFree(real.galaxies);
     cudaFree(random.galaxies);
     cudaFree(DD_histogram);
@@ -184,4 +136,46 @@ void read_file(FILE *fpointer, const char *DELIMITER, int n, Galaxy *galaxies)
             token = strtok(NULL, DELIMITER);
         }
     }
+}
+
+__device__ double angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
+{
+    return acos(
+        sin(first_galaxy.declination) * sin(second_galaxy.declination) +
+        cos(first_galaxy.declination) * cos(second_galaxy.declination) *
+            cos(first_galaxy.right_ascension - second_galaxy.right_ascension));
+}
+
+__device__ double radians_to_degrees(double radian_value)
+{
+    return radian_value * (180 / M_PI);
+}
+
+__device__ void update_bin(int *bin, double angle)
+{
+    int index = floor(radians_to_degrees(angle) / BIN_WIDTH);
+    atomicAdd(&bin[index], 1);
+}
+
+__global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+
+    double angle;
+    for (int i = 0; i < n; i += 1)
+        for (int j = index; j < n; j += stride)
+        {
+            angle = angle_between_two_galaxies(real.galaxies[i], random.galaxies[j]);
+            update_bin(DR_histogram, angle);
+
+            if (j > i)
+            {
+                angle = angle_between_two_galaxies(real.galaxies[i], real.galaxies[j]);
+                update_bin(DD_histogram, angle);
+
+                angle = angle_between_two_galaxies(random.galaxies[i], random.galaxies[j]);
+                update_bin(RR_histogram, angle);
+            }
+        }
 }
