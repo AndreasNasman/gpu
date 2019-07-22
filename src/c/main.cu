@@ -19,9 +19,10 @@ typedef struct GalaxySet
 } GalaxySet;
 
 __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, int *distribution);
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, double *distribution);
 void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxy_set);
-void write_file(FILE *filePointer, int *content, int n);
+void write_file_int(FILE *filePointer, int *content, int n);
+void write_file_double(FILE *filePointer, double *content, int n);
 
 int main()
 {
@@ -73,8 +74,8 @@ int main()
     cudaDeviceSynchronize();
 
     /* DETERMINING DISTRIBUTION */
-    int *distribution;
-    cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(int));
+    double *distribution;
+    cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(double));
     galaxy_distribution<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(DD_histogram, DR_histogram, RR_histogram, NUMBER_OF_BINS, distribution);
 
     cudaDeviceSynchronize();
@@ -83,13 +84,13 @@ int main()
     system("mkdir -p results");
 
     filePointer = fopen("results/DD_histogram.txt", "w");
-    write_file(filePointer, DD_histogram, NUMBER_OF_BINS);
+    write_file_int(filePointer, DD_histogram, NUMBER_OF_BINS);
 
     filePointer = fopen("results/RR_histogram.txt", "w");
-    write_file(filePointer, RR_histogram, NUMBER_OF_BINS);
+    write_file_int(filePointer, RR_histogram, NUMBER_OF_BINS);
 
     filePointer = fopen("results/Distribution.txt", "w");
-    write_file(filePointer, distribution, NUMBER_OF_BINS);
+    write_file_double(filePointer, distribution, NUMBER_OF_BINS);
 
     /* CLEAN UP */
     fclose(filePointer);
@@ -147,7 +148,7 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
         }
 }
 
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, int *distribution)
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, double *distribution)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -157,7 +158,7 @@ __global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *R
         if (RR_histogram[i] == 0)
             continue;
 
-        distribution[i] = (DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
+        distribution[i] = (double) (DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
     }
 }
 
@@ -198,9 +199,14 @@ void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxies
     }
 }
 
-void write_file(FILE *filePointer, int *content, int n)
+void write_file_int(FILE *filePointer, int *content, int n)
 {
-
     for (int i = 0; i < n; i += 1)
         fprintf(filePointer, "%d\n", content[i]);
+}
+
+void write_file_double(FILE *filePointer, double *content, int n)
+{
+    for (int i = 0; i < n; i += 1)
+        fprintf(filePointer, "%f\n", content[i]);
 }
