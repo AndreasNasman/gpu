@@ -74,8 +74,8 @@ int main()
     /* WRITING HISTOGRAMS TO FILE */
     system("mkdir -p histograms");
 
-    filePointer = fopen("histograms/DR_histogram.txt", "w");
-    write_file(filePointer, DR_histogram, NUMBER_OF_BINS);
+    filePointer = fopen("histograms/DD_histogram.txt", "w");
+    write_file(filePointer, DD_histogram, NUMBER_OF_BINS);
 
     filePointer = fopen("histograms/RR_histogram.txt", "w");
     write_file(filePointer, RR_histogram, NUMBER_OF_BINS);
