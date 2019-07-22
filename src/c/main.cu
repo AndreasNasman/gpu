@@ -19,6 +19,7 @@ typedef struct GalaxySet
 } GalaxySet;
 
 __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, int *distribution);
 void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxy_set);
 void write_file(FILE *filePointer, int *content, int n);
 
@@ -71,14 +72,24 @@ int main()
 
     cudaDeviceSynchronize();
 
-    /* WRITING HISTOGRAMS TO FILE */
-    system("mkdir -p histograms");
+    /* DETERMINING DISTRIBUTION */
+    int *distribution;
+    cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(int));
+    galaxy_distribution<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(DD_histogram, DR_histogram, RR_histogram, NUMBER_OF_BINS, distribution);
 
-    filePointer = fopen("histograms/DD_histogram.txt", "w");
+    cudaDeviceSynchronize();
+
+    /* WRITING RESULTS TO FILE */
+    system("mkdir -p results");
+
+    filePointer = fopen("results/DD_histogram.txt", "w");
     write_file(filePointer, DD_histogram, NUMBER_OF_BINS);
 
-    filePointer = fopen("histograms/RR_histogram.txt", "w");
+    filePointer = fopen("results/RR_histogram.txt", "w");
     write_file(filePointer, RR_histogram, NUMBER_OF_BINS);
+
+    filePointer = fopen("results/Distribution.txt", "w");
+    write_file(filePointer, distribution, NUMBER_OF_BINS);
 
     /* CLEAN UP */
     fclose(filePointer);
@@ -134,6 +145,20 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
                 update_bin(RR_histogram, angle);
             }
         }
+}
+
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, int *distribution)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+
+    for (int i = index; i < n; i += stride)
+    {
+        if (RR_histogram[i] == 0)
+            continue;
+
+        distribution[i] = (DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
+    }
 }
 
 double arcminutes_to_radians(double arcminute_value)
