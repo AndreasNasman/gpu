@@ -182,4 +182,3 @@ void write_file(FILE *filePointer, int *content, int n)
     for (int i = 0; i < n; i += 1)
         fprintf(filePointer, "%d\n", content[i]);
 }
-
