@@ -119,10 +119,10 @@ __device__ double radians_to_degrees(double radian_value)
     return radian_value * (180 / M_PI);
 }
 
-__device__ void update_bin(int *bin, double angle)
+__device__ void update_bin(int *bin, double angle, int incrementor)
 {
     int index = floor(radians_to_degrees(angle) / BIN_WIDTH);
-    atomicAdd(&bin[index], 1);
+    atomicAdd(&bin[index], incrementor);
 }
 
 __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n)
@@ -135,15 +135,21 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
         for (int j = index; j < n; j += stride)
         {
             angle = angle_between_two_galaxies(real.galaxies[i], random.galaxies[j]);
-            update_bin(DR_histogram, angle);
+            update_bin(DR_histogram, angle, 1);
 
-            if (j > i)
+            if (j == i)
+            {
+                angle = 0;
+                update_bin(DD_histogram, angle, 1);
+                update_bin(RR_histogram, angle, 1);
+            }
+            else if (j > i)
             {
                 angle = angle_between_two_galaxies(real.galaxies[i], real.galaxies[j]);
-                update_bin(DD_histogram, angle);
+                update_bin(DD_histogram, angle, 2);
 
                 angle = angle_between_two_galaxies(random.galaxies[i], random.galaxies[j]);
-                update_bin(RR_histogram, angle);
+                update_bin(RR_histogram, angle, 2);
             }
         }
 }
@@ -158,7 +164,7 @@ __global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *R
         if (RR_histogram[i] == 0)
             continue;
 
-        distribution[i] = (double) (DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
+        distribution[i] = (double)(DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
     }
 }
 
