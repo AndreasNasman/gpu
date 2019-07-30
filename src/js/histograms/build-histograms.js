@@ -23,27 +23,27 @@ exports.execute = () => {
 
     const radiansToDegrees = radians => radians * (180 / Math.PI);
 
-    const updateBins = angle => {
-      if (isNaN(angle)) return;
+    const updateBins = (angle, amount = 1) => {
       const index = Math.floor(radiansToDegrees(angle) / BIN_WIDTH);
-      bins[index] += 1;
+      bins[index] += amount;
     };
 
-    if (!secondGalaxySet) {
-      firstGalaxySet.forEach((firstGalaxy, index) => {
-        firstGalaxySet.slice(index).forEach(secondGalaxy => {
-          const angle = angleBetweenTwoGalaxies(firstGalaxy, secondGalaxy);
-          updateBins(angle);
-        });
-      });
-    } else {
-      firstGalaxySet.forEach(firstGalaxy => {
+    firstGalaxySet.forEach((firstGalaxy, index) => {
+      if (secondGalaxySet) {
         secondGalaxySet.forEach(secondGalaxy => {
           const angle = angleBetweenTwoGalaxies(firstGalaxy, secondGalaxy);
           updateBins(angle);
         });
-      });
-    }
+      } else {
+        const angle = 0;
+        updateBins(angle);
+
+        firstGalaxySet.slice(index + 1).forEach(secondGalaxy => {
+          const angle = angleBetweenTwoGalaxies(firstGalaxy, secondGalaxy);
+          updateBins(angle, 2);
+        });
+      }
+    });
 
     fs.writeFileSync(`${__dirname}/${outputName}.json`, JSON.stringify(bins));
     console.log(`Histogram '${outputName}' built!`);
@@ -53,5 +53,5 @@ exports.execute = () => {
   buildHistogram(realGalaxies, randomGalaxies, "DR");
   buildHistogram(randomGalaxies, null, "RR");
 
-  console.log("\x1b[33m%s\x1b[0m", "Building of histograms started.\n");
+  console.log("\x1b[33m%s\x1b[0m", "Building of histograms finished.\n");
 };
