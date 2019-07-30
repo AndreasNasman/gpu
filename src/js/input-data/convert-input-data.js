@@ -13,8 +13,8 @@ exports.execute = () => {
     );
 
     const result = data
-      .split("\r\n")
-      .splice(1)
+      .split("\n")
+      .slice(1, -1)
       .map(row => {
         let [rightAscension, declination] = row.split(/\s+/);
         declination = arcminutesToRadians(declination);
