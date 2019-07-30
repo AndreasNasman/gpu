@@ -108,6 +108,10 @@ int main()
 
 __device__ double angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
 {
+    // Checks for duplications (exists in the real galaxy file), which would otherwise make the algorithm return 'null' or 'nan'.
+    if (first_galaxy.declination == second_galaxy.declination && first_galaxy.right_ascension == second_galaxy.right_ascension)
+        return 0;
+
     return acos(
         sin(first_galaxy.declination) * sin(second_galaxy.declination) +
         cos(first_galaxy.declination) * cos(second_galaxy.declination) *
@@ -134,15 +138,20 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
     for (int i = 0; i < n; i += 1)
         for (int j = index; j < n; j += stride)
         {
+            // Every pair of real-random galaxy is compared.
             angle = angle_between_two_galaxies(real.galaxies[i], random.galaxies[j]);
             update_bin(DR_histogram, angle, 1);
 
+            // Real-real and random-random galaxy pairs are only compared from the same starting index forward.
+            // If both indexes are the same, the relevant bin is incremented by one.
             if (j == i)
             {
                 angle = 0;
                 update_bin(DD_histogram, angle, 1);
                 update_bin(RR_histogram, angle, 1);
             }
+            // When one of the indexes is greater, the relevant bin is incremented by two.
+            // This is the same as doing the comparison twice, thus saving execution time.
             else if (j > i)
             {
                 angle = angle_between_two_galaxies(real.galaxies[i], real.galaxies[j]);
@@ -176,8 +185,8 @@ double arcminutes_to_radians(double arcminute_value)
 void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxies)
 {
     char line[LINE_LENGTH];
-    const int DECLINATION_INDEX = 0;
-    const int RIGHT_ASCENSION_INDEX = 1;
+    const int DECLINATION_INDEX = 1;
+    const int RIGHT_ASCENSION_INDEX = 0;
 
     for (int i = 0; i < n; i += 1)
     {
