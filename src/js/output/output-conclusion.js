@@ -9,6 +9,11 @@ exports.execute = () => {
 
   const result = [];
   for (let i = 0; i < histogramDD.length; i += 1) {
+    if (histogramRR[i] === 0) {
+      result.push(0);
+      continue;
+    }
+
     result.push(
       (histogramDD[i] - 2 * histogramDR[i] + histogramRR[i]) / histogramRR[i]
     );
