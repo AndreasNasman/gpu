@@ -1,2 +1,0 @@
-rm main.cu && nano main.cu
-nvcc main.cu -o main && time nvprof --unified-memory-profiling off ./main
