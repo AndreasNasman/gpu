@@ -1,0 +1,2 @@
+#!/bin/bash
+nvcc main.cu -o main && time nvprof --unified-memory-profiling off ./main
