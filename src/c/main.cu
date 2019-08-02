@@ -19,33 +19,33 @@ typedef struct GalaxySet
 } GalaxySet;
 
 __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, float *distribution);
-void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxy_set);
-void write_file_int(FILE *filePointer, int *content, int n);
-void write_file_float(FILE *filePointer, float *content, int n);
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n);
+void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxy_set, int n);
+void write_file_int(FILE *file_pointer, int *content, int n);
+void write_file_float(FILE *file_pointer, float *content, int n);
 
 int main()
 {
     /* READING REAL GALAXIES FILE */
-    FILE *filePointer = fopen("./input-data/real-galaxies.txt", "r");
+    FILE *file_pointer = fopen("./input-data/real-galaxies.txt", "r");
     const char *DELIMITER = "\t";
 
     // Reads number of lines to process (defined on the first line of the file).
     char line[LINE_LENGTH];
-    fgets(line, LINE_LENGTH, filePointer);
+    fgets(line, LINE_LENGTH, file_pointer);
     const int NUMBER_OF_LINES = atoi(line);
 
     GalaxySet real;
     cudaMallocManaged(&real.galaxies, NUMBER_OF_LINES * sizeof(Galaxy));
 
-    read_file(filePointer, DELIMITER, NUMBER_OF_LINES, real.galaxies);
+    read_file(file_pointer, DELIMITER, real.galaxies, NUMBER_OF_LINES);
 
     /* READING RANDOM GALAXIES FILE */
-    filePointer = fopen("./input-data/random-galaxies.txt", "r");
+    file_pointer = fopen("./input-data/random-galaxies.txt", "r");
     DELIMITER = " ";
 
     // Checks that number of lines is equal in both files.
-    fgets(line, LINE_LENGTH, filePointer);
+    fgets(line, LINE_LENGTH, file_pointer);
     if (NUMBER_OF_LINES != atoi(line))
     {
         printf("Both files should have equal number of lines!");
@@ -55,7 +55,7 @@ int main()
     GalaxySet random;
     cudaMallocManaged(&random.galaxies, NUMBER_OF_LINES * sizeof(Galaxy));
 
-    read_file(filePointer, DELIMITER, NUMBER_OF_LINES, random.galaxies);
+    read_file(file_pointer, DELIMITER, random.galaxies, NUMBER_OF_LINES);
 
     /* BUILDING HISTOGRAMS */
     const int COVERAGE = 180; // degrees
@@ -70,7 +70,6 @@ int main()
     cudaMallocManaged(&RR_histogram_temp, NUMBER_OF_BINS * NUMBER_OF_BLOCKS * sizeof(int));
 
     build_histograms<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(real, random, DD_histogram_temp, DR_histogram_temp, RR_histogram_temp, NUMBER_OF_LINES);
-
     cudaDeviceSynchronize();
 
     int *DD_histogram, *DR_histogram, *RR_histogram;
@@ -78,8 +77,8 @@ int main()
     cudaMallocManaged(&DR_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&RR_histogram, NUMBER_OF_BINS * sizeof(int));
 
-
-    for(int i = 0; i < NUMBER_OF_BINS * NUMBER_OF_BLOCKS; i += 1) {
+    for (int i = 0; i < NUMBER_OF_BINS * NUMBER_OF_BLOCKS; i += 1)
+    {
         DD_histogram[i % NUMBER_OF_BINS] += DD_histogram_temp[i];
         DR_histogram[i % NUMBER_OF_BINS] += DR_histogram_temp[i];
         RR_histogram[i % NUMBER_OF_BINS] += RR_histogram_temp[i];
@@ -88,24 +87,24 @@ int main()
     /* DETERMINING DISTRIBUTION */
     float *distribution;
     cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(float));
-    galaxy_distribution<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(DD_histogram, DR_histogram, RR_histogram, NUMBER_OF_BINS, distribution);
 
+    galaxy_distribution<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(DD_histogram, DR_histogram, RR_histogram, distribution, NUMBER_OF_BINS);
     cudaDeviceSynchronize();
 
     /* WRITING RESULTS TO FILE */
     system("mkdir -p results");
 
-    filePointer = fopen("results/DD_histogram.txt", "w");
-    write_file_int(filePointer, DD_histogram, NUMBER_OF_BINS);
+    file_pointer = fopen("results/DD_histogram.txt", "w");
+    write_file_int(file_pointer, DD_histogram, NUMBER_OF_BINS);
 
-    filePointer = fopen("results/RR_histogram.txt", "w");
-    write_file_int(filePointer, RR_histogram, NUMBER_OF_BINS);
+    file_pointer = fopen("results/RR_histogram.txt", "w");
+    write_file_int(file_pointer, RR_histogram, NUMBER_OF_BINS);
 
-    filePointer = fopen("results/Distribution.txt", "w");
-    write_file_float(filePointer, distribution, NUMBER_OF_BINS);
+    file_pointer = fopen("results/Distribution.txt", "w");
+    write_file_float(file_pointer, distribution, NUMBER_OF_BINS);
 
     /* CLEAN UP */
-    fclose(filePointer);
+    fclose(file_pointer);
 
     cudaFree(real.galaxies);
     cudaFree(random.galaxies);
@@ -147,7 +146,8 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
     __shared__ int shared_DD_histogram[720];
     __shared__ int shared_DR_histogram[720];
     __shared__ int shared_RR_histogram[720];
-    for(int i = 0; i < 720; i += 1) {
+    for (int i = 0; i < 720; i += 1)
+    {
         shared_DD_histogram[i] = 0;
         shared_DR_histogram[i] = 0;
         shared_RR_histogram[i] = 0;
@@ -155,7 +155,7 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
     __syncthreads();
 
     float angle;
-    for (int i = 0; i < n; i += 1) 
+    for (int i = 0; i < n; i += 1)
         for (int j = index; j < n; j += stride)
         {
             // Every pair of real-random galaxy is compared.
@@ -183,14 +183,15 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
         }
     __syncthreads();
 
-    for(int i = 0; i < 720 ; i += 1) {
+    for (int i = 0; i < 720; i += 1)
+    {
         DD_histogram[720 * blockIdx.x + i] = shared_DD_histogram[i];
         DR_histogram[720 * blockIdx.x + i] = shared_DR_histogram[i];
         RR_histogram[720 * blockIdx.x + i] = shared_RR_histogram[i];
     }
 }
 
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, float *distribution)
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -209,7 +210,7 @@ float arcminutes_to_radians(float arcminute_value)
     return (M_PI * arcminute_value) / (60 * 180);
 }
 
-void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxies)
+void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxies, int n)
 {
     char line[LINE_LENGTH];
     const int DECLINATION_INDEX = 1;
@@ -217,23 +218,19 @@ void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxies
 
     for (int i = 0; i < n; i += 1)
     {
-        fgets(line, LINE_LENGTH, filePointer);
+        fgets(line, LINE_LENGTH, file_pointer);
 
         char *token = strtok(line, DELIMITER);
 
         int index = 0;
         while (token != NULL)
         {
-            float arcminuteValue = atof(token);
+            float arcminute_value = atof(token);
 
             if (index == DECLINATION_INDEX)
-            {
-                galaxies[i].declination = arcminutes_to_radians(arcminuteValue);
-            }
+                galaxies[i].declination = arcminutes_to_radians(arcminute_value);
             else if (index == RIGHT_ASCENSION_INDEX)
-            {
-                galaxies[i].right_ascension = arcminutes_to_radians(arcminuteValue);
-            }
+                galaxies[i].right_ascension = arcminutes_to_radians(arcminute_value);
 
             index += 1;
             token = strtok(NULL, DELIMITER);
@@ -241,14 +238,14 @@ void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxies
     }
 }
 
-void write_file_int(FILE *filePointer, int *content, int n)
+void write_file_int(FILE *file_pointer, int *content, int n)
 {
     for (int i = 0; i < n; i += 1)
-        fprintf(filePointer, "%d\n", content[i]);
+        fprintf(file_pointer, "%d\n", content[i]);
 }
 
-void write_file_float(FILE *filePointer, float *content, int n)
+void write_file_float(FILE *file_pointer, float *content, int n)
 {
     for (int i = 0; i < n; i += 1)
-        fprintf(filePointer, "%f\n", content[i]);
+        fprintf(file_pointer, "%f\n", content[i]);
 }
