@@ -9,8 +9,8 @@
 
 typedef struct Galaxy
 {
-    double declination;
-    double right_ascension;
+    float declination;
+    float right_ascension;
 } Galaxy;
 
 typedef struct GalaxySet
@@ -19,10 +19,10 @@ typedef struct GalaxySet
 } GalaxySet;
 
 __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, double *distribution);
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, float *distribution);
 void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxy_set);
 void write_file_int(FILE *filePointer, int *content, int n);
-void write_file_double(FILE *filePointer, double *content, int n);
+void write_file_float(FILE *filePointer, float *content, int n);
 
 int main()
 {
@@ -74,8 +74,8 @@ int main()
     cudaDeviceSynchronize();
 
     /* DETERMINING DISTRIBUTION */
-    double *distribution;
-    cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(double));
+    float *distribution;
+    cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(float));
     galaxy_distribution<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(DD_histogram, DR_histogram, RR_histogram, NUMBER_OF_BINS, distribution);
 
     cudaDeviceSynchronize();
@@ -90,7 +90,7 @@ int main()
     write_file_int(filePointer, RR_histogram, NUMBER_OF_BINS);
 
     filePointer = fopen("results/Distribution.txt", "w");
-    write_file_double(filePointer, distribution, NUMBER_OF_BINS);
+    write_file_float(filePointer, distribution, NUMBER_OF_BINS);
 
     /* CLEAN UP */
     fclose(filePointer);
@@ -106,24 +106,22 @@ int main()
     return 0;
 }
 
-__device__ double angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
+__device__ float angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
 {
-    // Checks for duplications (exists in the real galaxy file), which would otherwise make the algorithm return 'null' or 'nan'.
-    if (first_galaxy.declination == second_galaxy.declination && first_galaxy.right_ascension == second_galaxy.right_ascension)
-        return 0;
+    float x = sinf(first_galaxy.declination) * sinf(second_galaxy.declination) +
+              cosf(first_galaxy.declination) * cosf(second_galaxy.declination) *
+                  cosf(first_galaxy.right_ascension - second_galaxy.right_ascension);
 
-    return acos(
-        sin(first_galaxy.declination) * sin(second_galaxy.declination) +
-        cos(first_galaxy.declination) * cos(second_galaxy.declination) *
-            cos(first_galaxy.right_ascension - second_galaxy.right_ascension));
+    // Checks that x is within the boundaries of [-1.0f, 1.0f].
+    return acosf(fmin(1.0f, fmax(-1.0f, x)));
 }
 
-__device__ double radians_to_degrees(double radian_value)
+__device__ float radians_to_degrees(float radian_value)
 {
     return radian_value * (180 / M_PI);
 }
 
-__device__ void update_bin(int *bin, double angle, int incrementor)
+__device__ void update_bin(int *bin, float angle, int incrementor)
 {
     int index = floor(radians_to_degrees(angle) / BIN_WIDTH);
     atomicAdd(&bin[index], incrementor);
@@ -134,7 +132,7 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
 
-    double angle;
+    float angle;
     for (int i = 0; i < n; i += 1)
         for (int j = index; j < n; j += stride)
         {
@@ -163,7 +161,7 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
         }
 }
 
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, double *distribution)
+__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, float *distribution)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -173,11 +171,11 @@ __global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *R
         if (RR_histogram[i] == 0)
             continue;
 
-        distribution[i] = (double)(DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
+        distribution[i] = (float)(DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
     }
 }
 
-double arcminutes_to_radians(double arcminute_value)
+float arcminutes_to_radians(float arcminute_value)
 {
     return (M_PI * arcminute_value) / (60 * 180);
 }
@@ -197,7 +195,7 @@ void read_file(FILE *filePointer, const char *DELIMITER, int n, Galaxy *galaxies
         int index = 0;
         while (token != NULL)
         {
-            double arcminuteValue = atof(token);
+            float arcminuteValue = atof(token);
 
             if (index == DECLINATION_INDEX)
             {
@@ -220,7 +218,7 @@ void write_file_int(FILE *filePointer, int *content, int n)
         fprintf(filePointer, "%d\n", content[i]);
 }
 
-void write_file_double(FILE *filePointer, double *content, int n)
+void write_file_float(FILE *filePointer, float *content, int n)
 {
     for (int i = 0; i < n; i += 1)
         fprintf(filePointer, "%f\n", content[i]);
