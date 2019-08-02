@@ -64,14 +64,26 @@ int main()
     // Defines number of blocks to use.
     const int NUMBER_OF_BLOCKS = (NUMBER_OF_LINES + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
+    int *DD_histogram_temp, *DR_histogram_temp, *RR_histogram_temp;
+    cudaMallocManaged(&DD_histogram_temp, NUMBER_OF_BINS * NUMBER_OF_BLOCKS * sizeof(int));
+    cudaMallocManaged(&DR_histogram_temp, NUMBER_OF_BINS * NUMBER_OF_BLOCKS * sizeof(int));
+    cudaMallocManaged(&RR_histogram_temp, NUMBER_OF_BINS * NUMBER_OF_BLOCKS * sizeof(int));
+
+    build_histograms<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(real, random, DD_histogram_temp, DR_histogram_temp, RR_histogram_temp, NUMBER_OF_LINES);
+
+    cudaDeviceSynchronize();
+
     int *DD_histogram, *DR_histogram, *RR_histogram;
     cudaMallocManaged(&DD_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&DR_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&RR_histogram, NUMBER_OF_BINS * sizeof(int));
 
-    build_histograms<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(real, random, DD_histogram, DR_histogram, RR_histogram, NUMBER_OF_LINES);
 
-    cudaDeviceSynchronize();
+    for(int i = 0; i < NUMBER_OF_BINS * NUMBER_OF_BLOCKS; i += 1) {
+        DD_histogram[i % NUMBER_OF_BINS] += DD_histogram_temp[i];
+        DR_histogram[i % NUMBER_OF_BINS] += DR_histogram_temp[i];
+        RR_histogram[i % NUMBER_OF_BINS] += RR_histogram_temp[i];
+    }
 
     /* DETERMINING DISTRIBUTION */
     float *distribution;
@@ -132,33 +144,50 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
 
+    __shared__ int shared_DD_histogram[720];
+    __shared__ int shared_DR_histogram[720];
+    __shared__ int shared_RR_histogram[720];
+    for(int i = 0; i < 720; i += 1) {
+        shared_DD_histogram[i] = 0;
+        shared_DR_histogram[i] = 0;
+        shared_RR_histogram[i] = 0;
+    }
+    __syncthreads();
+
     float angle;
-    for (int i = 0; i < n; i += 1)
+    for (int i = 0; i < n; i += 1) 
         for (int j = index; j < n; j += stride)
         {
             // Every pair of real-random galaxy is compared.
             angle = angle_between_two_galaxies(real.galaxies[i], random.galaxies[j]);
-            update_bin(DR_histogram, angle, 1);
+            update_bin(shared_DR_histogram, angle, 1);
 
             // Real-real and random-random galaxy pairs are only compared from the same starting index forward.
             // If both indexes are the same, the relevant bin is incremented by one.
             if (j == i)
             {
                 angle = 0;
-                update_bin(DD_histogram, angle, 1);
-                update_bin(RR_histogram, angle, 1);
+                update_bin(shared_DD_histogram, angle, 1);
+                update_bin(shared_RR_histogram, angle, 1);
             }
             // When one of the indexes is greater, the relevant bin is incremented by two.
             // This is the same as doing the comparison twice, thus saving execution time.
             else if (j > i)
             {
                 angle = angle_between_two_galaxies(real.galaxies[i], real.galaxies[j]);
-                update_bin(DD_histogram, angle, 2);
+                update_bin(shared_DD_histogram, angle, 2);
 
                 angle = angle_between_two_galaxies(random.galaxies[i], random.galaxies[j]);
-                update_bin(RR_histogram, angle, 2);
+                update_bin(shared_RR_histogram, angle, 2);
             }
         }
+    __syncthreads();
+
+    for(int i = 0; i < 720 ; i += 1) {
+        DD_histogram[720 * blockIdx.x + i] = shared_DD_histogram[i];
+        DR_histogram[720 * blockIdx.x + i] = shared_DR_histogram[i];
+        RR_histogram[720 * blockIdx.x + i] = shared_RR_histogram[i];
+    }
 }
 
 __global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, int n, float *distribution)
