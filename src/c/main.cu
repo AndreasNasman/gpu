@@ -171,7 +171,7 @@ __global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *R
         if (RR_histogram[i] == 0)
             continue;
 
-        distribution[i] = (float)(DD_histogram[i] - 2 * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
+        distribution[i] = (DD_histogram[i] - 2.0f * DR_histogram[i] + RR_histogram[i]) / RR_histogram[i];
     }
 }
 
