@@ -5,7 +5,10 @@
 
 #define BIN_WIDTH 0.25
 #define BLOCK_DIM 256
+#define COVERAGE 180
 #define LINE_LENGTH 30
+
+#define NUMBER_OF_BINS (COVERAGE * (int)(1 / BIN_WIDTH))
 
 typedef struct Galaxy
 {
@@ -18,7 +21,7 @@ typedef struct GalaxySet
     Galaxy *galaxies;
 } GalaxySet;
 
-__global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
+__global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
 __global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n);
 void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxy_set, int n);
 void write_file_int(FILE *file_pointer, int *content, int n);
@@ -57,37 +60,36 @@ int main()
 
     read_file(file_pointer, DELIMITER, random.galaxies, NUMBER_OF_LINES);
 
-    /* BUILDING HISTOGRAMS */
-    const int COVERAGE = 180; // degrees
-    const int NUMBER_OF_BINS = COVERAGE * (1 / BIN_WIDTH);
+    /* COLLECTING HISTOGRAMS */
+    int GRID_DIM = ceil(NUMBER_OF_LINES / (float)BLOCK_DIM);
+    const int COLLECTED_HISTOGRAM_SIZE = GRID_DIM * NUMBER_OF_BINS;
 
-    // Defines number of blocks to use.
-    const int GRID_DIM = ceil(NUMBER_OF_LINES / (float)BLOCK_DIM);
+    int *DD_histogram_collected, *DR_histogram_collected, *RR_histogram_collected;
+    cudaMallocManaged(&DD_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
+    cudaMallocManaged(&DR_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
+    cudaMallocManaged(&RR_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
 
-    int *DD_histogram_temp, *DR_histogram_temp, *RR_histogram_temp;
-    cudaMallocManaged(&DD_histogram_temp, NUMBER_OF_BINS * GRID_DIM * sizeof(int));
-    cudaMallocManaged(&DR_histogram_temp, NUMBER_OF_BINS * GRID_DIM * sizeof(int));
-    cudaMallocManaged(&RR_histogram_temp, NUMBER_OF_BINS * GRID_DIM * sizeof(int));
-
-    build_histograms<<<GRID_DIM, BLOCK_DIM>>>(real, random, DD_histogram_temp, DR_histogram_temp, RR_histogram_temp, NUMBER_OF_LINES);
+    collect_histograms<<<GRID_DIM, BLOCK_DIM>>>(real, random, DD_histogram_collected, DR_histogram_collected, RR_histogram_collected, NUMBER_OF_LINES);
     cudaDeviceSynchronize();
 
+    /* ACCUMULATING HISTOGRAMS */
     int *DD_histogram, *DR_histogram, *RR_histogram;
     cudaMallocManaged(&DD_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&DR_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&RR_histogram, NUMBER_OF_BINS * sizeof(int));
 
-    for (int i = 0; i < NUMBER_OF_BINS * GRID_DIM; i += 1)
+    for (int i = 0; i < COLLECTED_HISTOGRAM_SIZE; i += 1)
     {
-        DD_histogram[i % NUMBER_OF_BINS] += DD_histogram_temp[i];
-        DR_histogram[i % NUMBER_OF_BINS] += DR_histogram_temp[i];
-        RR_histogram[i % NUMBER_OF_BINS] += RR_histogram_temp[i];
+        DD_histogram[i % NUMBER_OF_BINS] += DD_histogram_collected[i];
+        DR_histogram[i % NUMBER_OF_BINS] += DR_histogram_collected[i];
+        RR_histogram[i % NUMBER_OF_BINS] += RR_histogram_collected[i];
     }
 
     /* DETERMINING DISTRIBUTION */
     float *distribution;
     cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(float));
 
+    GRID_DIM = ceil(NUMBER_OF_BINS / (float)BLOCK_DIM);
     galaxy_distribution<<<GRID_DIM, BLOCK_DIM>>>(DD_histogram, DR_histogram, RR_histogram, distribution, NUMBER_OF_BINS);
     cudaDeviceSynchronize();
 
@@ -138,15 +140,15 @@ __device__ void update_bin(int *bin, float angle, int incrementor)
     atomicAdd(&bin[index], incrementor);
 }
 
-__global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n)
+__global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
 
-    __shared__ int shared_DD_histogram[720];
-    __shared__ int shared_DR_histogram[720];
-    __shared__ int shared_RR_histogram[720];
-    for (int i = 0; i < 720; i += 1)
+    __shared__ int shared_DD_histogram[NUMBER_OF_BINS];
+    __shared__ int shared_DR_histogram[NUMBER_OF_BINS];
+    __shared__ int shared_RR_histogram[NUMBER_OF_BINS];
+    for (int i = threadIdx.x; i < NUMBER_OF_BINS; i += blockDim.x)
     {
         shared_DD_histogram[i] = 0;
         shared_DR_histogram[i] = 0;
@@ -183,11 +185,11 @@ __global__ void build_histograms(GalaxySet real, GalaxySet random, int *DD_histo
         }
     __syncthreads();
 
-    for (int i = 0; i < 720; i += 1)
+    for (int i = threadIdx.x; i < NUMBER_OF_BINS; i += blockDim.x)
     {
-        DD_histogram[720 * blockIdx.x + i] = shared_DD_histogram[i];
-        DR_histogram[720 * blockIdx.x + i] = shared_DR_histogram[i];
-        RR_histogram[720 * blockIdx.x + i] = shared_RR_histogram[i];
+        DD_histogram[blockIdx.x * NUMBER_OF_BINS + i] = shared_DD_histogram[i];
+        DR_histogram[blockIdx.x * NUMBER_OF_BINS + i] = shared_DR_histogram[i];
+        RR_histogram[blockIdx.x * NUMBER_OF_BINS + i] = shared_RR_histogram[i];
     }
 }
 
