@@ -188,7 +188,7 @@ __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_his
     // The section corresponding to the current block is updated in the collected histogram arrays.
     for (int i = threadIdx.x; i < BINS_TOTAL; i += blockDim.x)
     {
-        DR_histogram_collected[blockIdx.x * BINS_TOTAL + i] = shared_DD_histogram[i];
+        DD_histogram_collected[blockIdx.x * BINS_TOTAL + i] = shared_DD_histogram[i];
         DR_histogram_collected[blockIdx.x * BINS_TOTAL + i] = shared_DR_histogram[i];
         RR_histogram_collected[blockIdx.x * BINS_TOTAL + i] = shared_RR_histogram[i];
     }
