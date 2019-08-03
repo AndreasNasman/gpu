@@ -8,7 +8,7 @@
 #define COVERAGE 180
 #define LINE_LENGTH 30
 
-#define NUMBER_OF_BINS (COVERAGE * (int)(1 / BIN_WIDTH))
+#define BINS_TOTAL (COVERAGE * (int)(1 / BIN_WIDTH))
 
 typedef struct Galaxy
 {
@@ -22,7 +22,7 @@ typedef struct GalaxySet
 } GalaxySet;
 
 __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n);
+__global__ void measure_galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n);
 void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxy_set, int n);
 void write_file_int(FILE *file_pointer, int *content, int n);
 void write_file_float(FILE *file_pointer, float *content, int n);
@@ -36,12 +36,12 @@ int main()
     // Reads number of lines to process (defined on the first line of the file).
     char line[LINE_LENGTH];
     fgets(line, LINE_LENGTH, file_pointer);
-    const int NUMBER_OF_LINES = atoi(line);
+    const int LINES_TOTAL = atoi(line);
 
     GalaxySet real;
-    cudaMallocManaged(&real.galaxies, NUMBER_OF_LINES * sizeof(Galaxy));
+    cudaMallocManaged(&real.galaxies, LINES_TOTAL * sizeof(Galaxy));
 
-    read_file(file_pointer, DELIMITER, real.galaxies, NUMBER_OF_LINES);
+    read_file(file_pointer, DELIMITER, real.galaxies, LINES_TOTAL);
 
     /* READING RANDOM GALAXIES FILE */
     file_pointer = fopen("./input-data/random-galaxies.txt", "r");
@@ -49,61 +49,61 @@ int main()
 
     // Checks that number of lines is equal in both files.
     fgets(line, LINE_LENGTH, file_pointer);
-    if (NUMBER_OF_LINES != atoi(line))
+    if (LINES_TOTAL != atoi(line))
     {
         printf("Both files should have equal number of lines!");
         return 1;
     }
 
     GalaxySet random;
-    cudaMallocManaged(&random.galaxies, NUMBER_OF_LINES * sizeof(Galaxy));
+    cudaMallocManaged(&random.galaxies, LINES_TOTAL * sizeof(Galaxy));
 
-    read_file(file_pointer, DELIMITER, random.galaxies, NUMBER_OF_LINES);
+    read_file(file_pointer, DELIMITER, random.galaxies, LINES_TOTAL);
 
     /* COLLECTING HISTOGRAMS */
-    int GRID_DIM = ceil(NUMBER_OF_LINES / (float)BLOCK_DIM);
-    const int COLLECTED_HISTOGRAM_SIZE = GRID_DIM * NUMBER_OF_BINS;
+    int GRID_DIM = ceil(LINES_TOTAL / (float)BLOCK_DIM);
+    const int COLLECTED_HISTOGRAM_SIZE = GRID_DIM * BINS_TOTAL;
 
     int *DD_histogram_collected, *DR_histogram_collected, *RR_histogram_collected;
     cudaMallocManaged(&DD_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
     cudaMallocManaged(&DR_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
     cudaMallocManaged(&RR_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
 
-    collect_histograms<<<GRID_DIM, BLOCK_DIM>>>(real, random, DD_histogram_collected, DR_histogram_collected, RR_histogram_collected, NUMBER_OF_LINES);
+    collect_histograms<<<GRID_DIM, BLOCK_DIM>>>(real, random, DD_histogram_collected, DR_histogram_collected, RR_histogram_collected, LINES_TOTAL);
     cudaDeviceSynchronize();
 
     /* ACCUMULATING HISTOGRAMS */
     int *DD_histogram, *DR_histogram, *RR_histogram;
-    cudaMallocManaged(&DD_histogram, NUMBER_OF_BINS * sizeof(int));
-    cudaMallocManaged(&DR_histogram, NUMBER_OF_BINS * sizeof(int));
-    cudaMallocManaged(&RR_histogram, NUMBER_OF_BINS * sizeof(int));
+    cudaMallocManaged(&DD_histogram, BINS_TOTAL * sizeof(int));
+    cudaMallocManaged(&DR_histogram, BINS_TOTAL * sizeof(int));
+    cudaMallocManaged(&RR_histogram, BINS_TOTAL * sizeof(int));
 
     for (int i = 0; i < COLLECTED_HISTOGRAM_SIZE; i += 1)
     {
-        DD_histogram[i % NUMBER_OF_BINS] += DD_histogram_collected[i];
-        DR_histogram[i % NUMBER_OF_BINS] += DR_histogram_collected[i];
-        RR_histogram[i % NUMBER_OF_BINS] += RR_histogram_collected[i];
+        DD_histogram[i % BINS_TOTAL] += DD_histogram_collected[i];
+        DR_histogram[i % BINS_TOTAL] += DR_histogram_collected[i];
+        RR_histogram[i % BINS_TOTAL] += RR_histogram_collected[i];
     }
 
     /* DETERMINING DISTRIBUTION */
     float *distribution;
-    cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(float));
+    cudaMallocManaged(&distribution, BINS_TOTAL * sizeof(float));
 
-    GRID_DIM = ceil(NUMBER_OF_BINS / (float)BLOCK_DIM);
-    galaxy_distribution<<<GRID_DIM, BLOCK_DIM>>>(DD_histogram, DR_histogram, RR_histogram, distribution, NUMBER_OF_BINS);
+    GRID_DIM = ceil(BINS_TOTAL / (float)BLOCK_DIM);
+    measure_galaxy_distribution<<<GRID_DIM, BLOCK_DIM>>>(DD_histogram, DR_histogram, RR_histogram, distribution, BINS_TOTAL);
     cudaDeviceSynchronize();
 
     /* WRITING RESULTS TO FILE */
     system("mkdir -p results");
 
     file_pointer = fopen("results/DD_histogram.txt", "w");
-    write_file_int(file_pointer, DD_histogram, NUMBER_OF_BINS);
+    write_file_int(file_pointer, DD_histogram, BINS_TOTAL);
 
     file_pointer = fopen("results/RR_histogram.txt", "w");
-    write_file_int(file_pointer, RR_histogram, NUMBER_OF_BINS);
+    write_file_int(file_pointer, RR_histogram, BINS_TOTAL);
 
     file_pointer = fopen("results/Distribution.txt", "w");
-    write_file_float(file_pointer, distribution, NUMBER_OF_BINS);
+    write_file_float(file_pointer, distribution, BINS_TOTAL);
 
     /* CLEAN UP */
     fclose(file_pointer);
@@ -145,10 +145,10 @@ __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_his
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
 
-    __shared__ int shared_DD_histogram[NUMBER_OF_BINS];
-    __shared__ int shared_DR_histogram[NUMBER_OF_BINS];
-    __shared__ int shared_RR_histogram[NUMBER_OF_BINS];
-    for (int i = threadIdx.x; i < NUMBER_OF_BINS; i += blockDim.x)
+    __shared__ int shared_DD_histogram[BINS_TOTAL];
+    __shared__ int shared_DR_histogram[BINS_TOTAL];
+    __shared__ int shared_RR_histogram[BINS_TOTAL];
+    for (int i = threadIdx.x; i < BINS_TOTAL; i += blockDim.x)
     {
         shared_DD_histogram[i] = 0;
         shared_DR_histogram[i] = 0;
@@ -185,15 +185,15 @@ __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_his
         }
     __syncthreads();
 
-    for (int i = threadIdx.x; i < NUMBER_OF_BINS; i += blockDim.x)
+    for (int i = threadIdx.x; i < BINS_TOTAL; i += blockDim.x)
     {
-        DD_histogram[blockIdx.x * NUMBER_OF_BINS + i] = shared_DD_histogram[i];
-        DR_histogram[blockIdx.x * NUMBER_OF_BINS + i] = shared_DR_histogram[i];
-        RR_histogram[blockIdx.x * NUMBER_OF_BINS + i] = shared_RR_histogram[i];
+        DD_histogram[blockIdx.x * BINS_TOTAL + i] = shared_DD_histogram[i];
+        DR_histogram[blockIdx.x * BINS_TOTAL + i] = shared_DR_histogram[i];
+        RR_histogram[blockIdx.x * BINS_TOTAL + i] = shared_RR_histogram[i];
     }
 }
 
-__global__ void galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n)
+__global__ void measure_galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
