@@ -4,7 +4,7 @@
 #include <math.h>
 
 #define BIN_WIDTH 0.25
-#define BLOCK_SIZE 256
+#define BLOCK_DIM 256
 #define LINE_LENGTH 30
 
 typedef struct Galaxy
@@ -62,14 +62,14 @@ int main()
     const int NUMBER_OF_BINS = COVERAGE * (1 / BIN_WIDTH);
 
     // Defines number of blocks to use.
-    const int NUMBER_OF_BLOCKS = (NUMBER_OF_LINES + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    const int GRID_DIM = ceil(NUMBER_OF_LINES / (float)BLOCK_DIM);
 
     int *DD_histogram_temp, *DR_histogram_temp, *RR_histogram_temp;
-    cudaMallocManaged(&DD_histogram_temp, NUMBER_OF_BINS * NUMBER_OF_BLOCKS * sizeof(int));
-    cudaMallocManaged(&DR_histogram_temp, NUMBER_OF_BINS * NUMBER_OF_BLOCKS * sizeof(int));
-    cudaMallocManaged(&RR_histogram_temp, NUMBER_OF_BINS * NUMBER_OF_BLOCKS * sizeof(int));
+    cudaMallocManaged(&DD_histogram_temp, NUMBER_OF_BINS * GRID_DIM * sizeof(int));
+    cudaMallocManaged(&DR_histogram_temp, NUMBER_OF_BINS * GRID_DIM * sizeof(int));
+    cudaMallocManaged(&RR_histogram_temp, NUMBER_OF_BINS * GRID_DIM * sizeof(int));
 
-    build_histograms<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(real, random, DD_histogram_temp, DR_histogram_temp, RR_histogram_temp, NUMBER_OF_LINES);
+    build_histograms<<<GRID_DIM, BLOCK_DIM>>>(real, random, DD_histogram_temp, DR_histogram_temp, RR_histogram_temp, NUMBER_OF_LINES);
     cudaDeviceSynchronize();
 
     int *DD_histogram, *DR_histogram, *RR_histogram;
@@ -77,7 +77,7 @@ int main()
     cudaMallocManaged(&DR_histogram, NUMBER_OF_BINS * sizeof(int));
     cudaMallocManaged(&RR_histogram, NUMBER_OF_BINS * sizeof(int));
 
-    for (int i = 0; i < NUMBER_OF_BINS * NUMBER_OF_BLOCKS; i += 1)
+    for (int i = 0; i < NUMBER_OF_BINS * GRID_DIM; i += 1)
     {
         DD_histogram[i % NUMBER_OF_BINS] += DD_histogram_temp[i];
         DR_histogram[i % NUMBER_OF_BINS] += DR_histogram_temp[i];
@@ -88,7 +88,7 @@ int main()
     float *distribution;
     cudaMallocManaged(&distribution, NUMBER_OF_BINS * sizeof(float));
 
-    galaxy_distribution<<<NUMBER_OF_BLOCKS, BLOCK_SIZE>>>(DD_histogram, DR_histogram, RR_histogram, distribution, NUMBER_OF_BINS);
+    galaxy_distribution<<<GRID_DIM, BLOCK_DIM>>>(DD_histogram, DR_histogram, RR_histogram, distribution, NUMBER_OF_BINS);
     cudaDeviceSynchronize();
 
     /* WRITING RESULTS TO FILE */
