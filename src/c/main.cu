@@ -18,13 +18,8 @@ typedef struct Galaxy
     float right_ascension;
 } Galaxy;
 
-typedef struct GalaxySet
-{
-    Galaxy *galaxies;
-} GalaxySet;
-
 __global__ void adjust_galaxy_set(Galaxy *galaxy_set, int n);
-__global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_histogram_collected, int *DR_histogram_collected, int *RR_histogram_collected, int n);
+__global__ void collect_histograms(Galaxy *D_galaxy_set, Galaxy *R_galaxy_set, int *DD_histogram_collected, int *DR_histogram_collected, int *RR_histogram_collected, int n);
 __global__ void measure_galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n);
 void accumulate_histograms(int *DD_histogram_collected, int *DR_histogram_collected, int *RR_histogram_collected, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
 void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxy_set, int n);
@@ -42,10 +37,10 @@ int main()
     fgets(line, LINE_LENGTH, file_pointer);
     const int LINES_TOTAL = atoi(line);
 
-    GalaxySet real;
-    cudaMallocManaged(&real.galaxies, LINES_TOTAL * sizeof(Galaxy));
+    Galaxy *real;
+    cudaMallocManaged(&real, LINES_TOTAL * sizeof(Galaxy));
 
-    read_file(file_pointer, DELIMITER, real.galaxies, LINES_TOTAL);
+    read_file(file_pointer, DELIMITER, real, LINES_TOTAL);
 
     /* READING RANDOM GALAXIES FILE */
     file_pointer = fopen("./input-data/random-galaxies.txt", "r");
@@ -59,15 +54,15 @@ int main()
         return 1;
     }
 
-    GalaxySet random;
-    cudaMallocManaged(&random.galaxies, LINES_TOTAL * sizeof(Galaxy));
+    Galaxy *random;
+    cudaMallocManaged(&random, LINES_TOTAL * sizeof(Galaxy));
 
-    read_file(file_pointer, DELIMITER, random.galaxies, LINES_TOTAL);
+    read_file(file_pointer, DELIMITER, random, LINES_TOTAL);
 
     /* ADJUSTING GALAXY SETS */
     int GRID_DIM = ceilf(LINES_TOTAL / (float)BLOCK_DIM);
-    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(real.galaxies, LINES_TOTAL);
-    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(random.galaxies, LINES_TOTAL);
+    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(real, LINES_TOTAL);
+    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(random, LINES_TOTAL);
 
     /* COLLECTING HISTOGRAMS */
     const int COLLECTED_HISTOGRAM_SIZE = GRID_DIM * BINS_TOTAL;
@@ -111,8 +106,8 @@ int main()
     /* CLEAN UP */
     fclose(file_pointer);
 
-    cudaFree(real.galaxies);
-    cudaFree(random.galaxies);
+    cudaFree(real);
+    cudaFree(random);
     cudaFree(DD_histogram);
     cudaFree(DR_histogram);
     cudaFree(RR_histogram);
@@ -143,7 +138,7 @@ __global__ void adjust_galaxy_set(Galaxy *galaxy_set, int n)
     }
 }
 
-__device__ float angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
+__device__ float angle_between_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
 {
     float x = first_galaxy.declination_sin * second_galaxy.declination_sin +
               first_galaxy.declination_cos * second_galaxy.declination_cos *
@@ -166,7 +161,7 @@ __device__ void update_bin(int *bin, float angle, int incrementor)
     atomicAdd(&bin[index], incrementor);
 }
 
-__global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_histogram_collected, int *DR_histogram_collected, int *RR_histogram_collected, int n)
+__global__ void collect_histograms(Galaxy *D_galaxy_set, Galaxy *R_galaxy_set, int *DD_histogram_collected, int *DR_histogram_collected, int *RR_histogram_collected, int n)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -187,11 +182,11 @@ __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_his
     for (int i = 0; i < n; i += 1)
         for (int j = index; j < n; j += stride)
         {
-            // Every pair of real-random galaxy is compared.
-            float angle = angle_between_two_galaxies(real.galaxies[i], random.galaxies[j]);
+            // Every pair of D-R galaxy is compared.
+            float angle = angle_between_galaxies(D_galaxy_set[i], R_galaxy_set[j]);
             update_bin(shared_DR_histogram, angle, 1);
 
-            // Real-real and random-random galaxy pairs are only compared from the same starting index forward.
+            // D-D and R-R galaxy pairs are only compared from the same starting index forward.
             // If both indexes are the same, the relevant bin is incremented by one.
             if (j == i)
             {
@@ -203,10 +198,10 @@ __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_his
             // This is the same as doing the comparison twice, thus saving execution time.
             else if (j > i)
             {
-                angle = angle_between_two_galaxies(real.galaxies[i], real.galaxies[j]);
+                angle = angle_between_galaxies(D_galaxy_set[i], D_galaxy_set[j]);
                 update_bin(shared_DD_histogram, angle, 2);
 
-                angle = angle_between_two_galaxies(random.galaxies[i], random.galaxies[j]);
+                angle = angle_between_galaxies(R_galaxy_set[i], R_galaxy_set[j]);
                 update_bin(shared_RR_histogram, angle, 2);
             }
         }
@@ -245,7 +240,7 @@ void accumulate_histograms(int *DD_histogram_collected, int *DR_histogram_collec
     }
 }
 
-void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxies, int n)
+void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxy_set, int n)
 {
     char line[LINE_LENGTH];
     const int DECLINATION_INDEX = 1;
@@ -263,9 +258,9 @@ void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxies, int 
             float arcminute_value = atof(token);
 
             if (index == DECLINATION_INDEX)
-                galaxies[i].declination = arcminute_value;
+                galaxy_set[i].declination = arcminute_value;
             else if (index == RIGHT_ASCENSION_INDEX)
-                galaxies[i].right_ascension = arcminute_value;
+                galaxy_set[i].right_ascension = arcminute_value;
 
             index += 1;
             token = strtok(NULL, DELIMITER);
