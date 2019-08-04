@@ -32,37 +32,37 @@ int main()
     FILE *file_pointer = fopen("./input-data/real-galaxies.txt", "r");
     const char *DELIMITER = "\t";
 
-    // Reads number of lines to process (defined on the first line of the file).
+    // Reads number of galaxies to process (defined on the first line of the file).
     char line[LINE_LENGTH];
     fgets(line, LINE_LENGTH, file_pointer);
-    const int LINES_TOTAL = atoi(line);
+    const int GALAXIES_TOTAL = atoi(line);
 
     Galaxy *real;
-    cudaMallocManaged(&real, LINES_TOTAL * sizeof(Galaxy));
+    cudaMallocManaged(&real, GALAXIES_TOTAL * sizeof(Galaxy));
 
-    read_file(file_pointer, DELIMITER, real, LINES_TOTAL);
+    read_file(file_pointer, DELIMITER, real, GALAXIES_TOTAL);
 
     /* READING RANDOM GALAXIES FILE */
     file_pointer = fopen("./input-data/random-galaxies.txt", "r");
     DELIMITER = " ";
 
-    // Checks that number of lines is equal in both files.
+    // Checks that number of galaxies is equal in both files.
     fgets(line, LINE_LENGTH, file_pointer);
-    if (LINES_TOTAL != atoi(line))
+    if (GALAXIES_TOTAL != atoi(line))
     {
-        printf("Both files should have equal number of lines!");
+        printf("Both files should have equal number of galaxies!");
         return 1;
     }
 
     Galaxy *random;
-    cudaMallocManaged(&random, LINES_TOTAL * sizeof(Galaxy));
+    cudaMallocManaged(&random, GALAXIES_TOTAL * sizeof(Galaxy));
 
-    read_file(file_pointer, DELIMITER, random, LINES_TOTAL);
+    read_file(file_pointer, DELIMITER, random, GALAXIES_TOTAL);
 
     /* ADJUSTING GALAXY SETS */
-    int GRID_DIM = ceilf(LINES_TOTAL / (float)BLOCK_DIM);
-    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(real, LINES_TOTAL);
-    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(random, LINES_TOTAL);
+    int GRID_DIM = ceilf(GALAXIES_TOTAL / (float)BLOCK_DIM);
+    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(real, GALAXIES_TOTAL);
+    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(random, GALAXIES_TOTAL);
 
     /* COLLECTING HISTOGRAMS */
     const int COLLECTED_HISTOGRAM_SIZE = GRID_DIM * BINS_TOTAL;
@@ -72,7 +72,7 @@ int main()
     cudaMallocManaged(&DR_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
     cudaMallocManaged(&RR_histogram_collected, COLLECTED_HISTOGRAM_SIZE * sizeof(int));
 
-    collect_histograms<<<GRID_DIM, BLOCK_DIM>>>(real, random, DD_histogram_collected, DR_histogram_collected, RR_histogram_collected, LINES_TOTAL);
+    collect_histograms<<<GRID_DIM, BLOCK_DIM>>>(real, random, DD_histogram_collected, DR_histogram_collected, RR_histogram_collected, GALAXIES_TOTAL);
     cudaDeviceSynchronize();
 
     /* ACCUMULATING HISTOGRAMS */
