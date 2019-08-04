@@ -62,7 +62,7 @@ int main()
     read_file(file_pointer, DELIMITER, random.galaxies, LINES_TOTAL);
 
     /* COLLECTING HISTOGRAMS */
-    int GRID_DIM = ceil(LINES_TOTAL / (float)BLOCK_DIM);
+    int GRID_DIM = ceilf(LINES_TOTAL / (float)BLOCK_DIM);
     const int COLLECTED_HISTOGRAM_SIZE = GRID_DIM * BINS_TOTAL;
 
     int *DD_histogram_collected, *DR_histogram_collected, *RR_histogram_collected;
@@ -85,7 +85,7 @@ int main()
     float *distribution;
     cudaMallocManaged(&distribution, BINS_TOTAL * sizeof(float));
 
-    GRID_DIM = ceil(BINS_TOTAL / (float)BLOCK_DIM);
+    GRID_DIM = ceilf(BINS_TOTAL / (float)BLOCK_DIM);
     measure_galaxy_distribution<<<GRID_DIM, BLOCK_DIM>>>(DD_histogram, DR_histogram, RR_histogram, distribution, BINS_TOTAL);
     cudaDeviceSynchronize();
 
@@ -122,7 +122,7 @@ __device__ float angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_g
                   cosf(first_galaxy.right_ascension - second_galaxy.right_ascension);
 
     // Checks that x is within the boundaries of [-1.0f, 1.0f].
-    x = fmin(1.0f, fmax(-1.0f, x));
+    x = fminf(1.0f, fmaxf(-1.0f, x));
 
     return acosf(x);
 }
@@ -134,7 +134,7 @@ __device__ float radians_to_degrees(float radian_value)
 
 __device__ void update_bin(int *bin, float angle, int incrementor)
 {
-    int index = floor(radians_to_degrees(angle) / BIN_WIDTH);
+    int index = floorf(radians_to_degrees(angle) / BIN_WIDTH);
     atomicAdd(&bin[index], incrementor);
 }
 
@@ -262,3 +262,4 @@ void write_file_float(FILE *file_pointer, float *content, int n)
     for (int i = 0; i < n; i += 1)
         fprintf(file_pointer, "%f\n", content[i]);
 }
+
