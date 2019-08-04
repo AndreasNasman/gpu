@@ -112,7 +112,7 @@ int main()
     cudaFree(DR_histogram);
     cudaFree(RR_histogram);
 
-    printf("Done!\n\n");
+    printf("Galaxy distribution successfully calculated!\n");
 
     return 0;
 }
