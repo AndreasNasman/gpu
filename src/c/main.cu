@@ -23,6 +23,7 @@ typedef struct GalaxySet
     Galaxy *galaxies;
 } GalaxySet;
 
+__global__ void adjust_galaxy_set(Galaxy *galaxy_set, int n);
 __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_histogram_collected, int *DR_histogram_collected, int *RR_histogram_collected, int n);
 __global__ void measure_galaxy_distribution(int *DD_histogram, int *DR_histogram, int *RR_histogram, float *distribution, int n);
 void accumulate_histograms(int *DD_histogram_collected, int *DR_histogram_collected, int *RR_histogram_collected, int *DD_histogram, int *DR_histogram, int *RR_histogram, int n);
@@ -63,8 +64,12 @@ int main()
 
     read_file(file_pointer, DELIMITER, random.galaxies, LINES_TOTAL);
 
-    /* COLLECTING HISTOGRAMS */
+    /* ADJUSTING GALAXY SETS */
     int GRID_DIM = ceilf(LINES_TOTAL / (float)BLOCK_DIM);
+    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(real.galaxies, LINES_TOTAL);
+    adjust_galaxy_set<<<GRID_DIM, BLOCK_DIM>>>(random.galaxies, LINES_TOTAL);
+
+    /* COLLECTING HISTOGRAMS */
     const int COLLECTED_HISTOGRAM_SIZE = GRID_DIM * BINS_TOTAL;
 
     int *DD_histogram_collected, *DR_histogram_collected, *RR_histogram_collected;
@@ -115,6 +120,27 @@ int main()
     printf("Done!\n\n");
 
     return 0;
+}
+
+__device__ float arcminutes_to_radians(float arcminute_value)
+{
+    return (M_PI * arcminute_value) / (60 * 180);
+}
+
+__global__ void adjust_galaxy_set(Galaxy *galaxy_set, int n)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+
+    for (int i = index; i < n; i += stride)
+    {
+        float declination = arcminutes_to_radians(galaxy_set[i].declination);
+        galaxy_set[i].declination = declination;
+        galaxy_set[i].declination_cos = cosf(declination);
+        galaxy_set[i].declination_sin = sinf(declination);
+
+        galaxy_set[i].right_ascension = arcminutes_to_radians(galaxy_set[i].right_ascension);
+    }
 }
 
 __device__ float angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
@@ -219,11 +245,6 @@ void accumulate_histograms(int *DD_histogram_collected, int *DR_histogram_collec
     }
 }
 
-float arcminutes_to_radians(float arcminute_value)
-{
-    return (M_PI * arcminute_value) / (60 * 180);
-}
-
 void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxies, int n)
 {
     char line[LINE_LENGTH];
@@ -242,14 +263,9 @@ void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxies, int 
             float arcminute_value = atof(token);
 
             if (index == DECLINATION_INDEX)
-            {
-                float declination = arcminutes_to_radians(arcminute_value);
-                galaxies[i].declination = declination;
-                galaxies[i].declination_cos = cosf(declination);
-                galaxies[i].declination_sin = sinf(declination);
-            }
+                galaxies[i].declination = arcminute_value;
             else if (index == RIGHT_ASCENSION_INDEX)
-                galaxies[i].right_ascension = arcminutes_to_radians(arcminute_value);
+                galaxies[i].right_ascension = arcminute_value;
 
             index += 1;
             token = strtok(NULL, DELIMITER);
