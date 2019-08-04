@@ -13,6 +13,8 @@
 typedef struct Galaxy
 {
     float declination;
+    float declination_cos;
+    float declination_sin;
     float right_ascension;
 } Galaxy;
 
@@ -117,8 +119,8 @@ int main()
 
 __device__ float angle_between_two_galaxies(Galaxy first_galaxy, Galaxy second_galaxy)
 {
-    float x = sinf(first_galaxy.declination) * sinf(second_galaxy.declination) +
-              cosf(first_galaxy.declination) * cosf(second_galaxy.declination) *
+    float x = first_galaxy.declination_sin * second_galaxy.declination_sin +
+              first_galaxy.declination_cos * second_galaxy.declination_cos *
                   cosf(first_galaxy.right_ascension - second_galaxy.right_ascension);
 
     // Checks that x is within the boundaries of [-1.0f, 1.0f].
@@ -156,12 +158,11 @@ __global__ void collect_histograms(GalaxySet real, GalaxySet random, int *DD_his
     }
     __syncthreads();
 
-    float angle;
     for (int i = 0; i < n; i += 1)
         for (int j = index; j < n; j += stride)
         {
             // Every pair of real-random galaxy is compared.
-            angle = angle_between_two_galaxies(real.galaxies[i], random.galaxies[j]);
+            float angle = angle_between_two_galaxies(real.galaxies[i], random.galaxies[j]);
             update_bin(shared_DR_histogram, angle, 1);
 
             // Real-real and random-random galaxy pairs are only compared from the same starting index forward.
@@ -241,7 +242,12 @@ void read_file(FILE *file_pointer, const char *DELIMITER, Galaxy *galaxies, int 
             float arcminute_value = atof(token);
 
             if (index == DECLINATION_INDEX)
-                galaxies[i].declination = arcminutes_to_radians(arcminute_value);
+            {
+                float declination = arcminutes_to_radians(arcminute_value);
+                galaxies[i].declination = declination;
+                galaxies[i].declination_cos = cosf(declination);
+                galaxies[i].declination_sin = sinf(declination);
+            }
             else if (index == RIGHT_ASCENSION_INDEX)
                 galaxies[i].right_ascension = arcminutes_to_radians(arcminute_value);
 
@@ -262,4 +268,3 @@ void write_file_float(FILE *file_pointer, float *content, int n)
     for (int i = 0; i < n; i += 1)
         fprintf(file_pointer, "%f\n", content[i]);
 }
-
